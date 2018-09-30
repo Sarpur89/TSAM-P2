@@ -16,7 +16,7 @@ int main()
 	serv.sin_port = htons(5555);
 
 	inet_pton(AF_INET, "127.0.0.1", &serv.sin_addr); // Bind the client to localhost
-	connect(fd, (struct sockaddr *)&serv, sizeof(serv)); //This connects the client to the server.
+	connect(fd, (struct sockaddr *)&serv, sizeof(serv)); //Connects the client to the server.
 	while(1)
 	{
 	    printf("Enter a message: ");

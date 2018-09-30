@@ -8,6 +8,10 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <string>
+#include <iostream>
+#include <cstdlib>
+#include <string.h>
+#include <array>
 
 using namespace std;
 
@@ -15,53 +19,50 @@ using namespace std;
 #define MAXMSG  512
 #define GROUP "group1"
 
-char current_message [MAXMSG];
-/*
-struct client_information
-{
-    std::string username;
-    std::string ip_addr;
-};
-*/
-
-bool user_authentication()
-{
-
-}
+string current_message;
 
 string generate_server_id()
 {
+
     FILE *file_pipe;
-    string server_id;
-    char command[20];
-    char data[512];
-
+    array<char, 128> input;
     // Execute a process listing
-    sprintf(command, "fortune -s");
-
+    // Get the data from the process execution
+    string fortune = "fortune -s";
     // Setup our pipe for reading and execute our command.
-    file_pipe = popen(command,"r");
+    file_pipe = popen(fortune.c_str(), "r");
 
     // Error handling
 
-    // Get the data from the process execution
-    server_id = fgets(data, 512 , file_pipe);
-
     // the data is now in 'data'
-    if (pclose(file_pipe) != 0)
-        fprintf(stderr," Error: Failed to close command stream \n");
+    if (!file_pipe)
+    {
+      fprintf(stderr," Error: Failed to close command stream \n");
+      return 0;
+    }
 
-    return server_id + GROUP;
+    while(fgets(input.data(), 128 , file_pipe) != NULL)
+    {
+      printf("Reading");
+      return input.data();
+    }
 }
 
-void command_list (int connection, fd_set &active_fd_set)
+void command_list (int fd, char buffer [])
 {
-    if(current_message[0] == 'I' &&
-        current_message[1] == 'D')
+    char input[MAXMSG];
+    strcpy(input, buffer);
+    //Command for generating an ID
+    if(input[0] == 'I' && input[1] == 'D')
     {
         generate_server_id();
     }
-
+    //Command to leave the server
+    else if(buffer[0] == 'L' && buffer[1] == 'E' && buffer[2] == 'A' &&
+            buffer[3] == 'V' && buffer[4] == 'E')
+    {
+        shutdown(fd, SHUT_RDWR);
+    }
 }
 
 int read_from_client (int fd)
@@ -71,28 +72,22 @@ int read_from_client (int fd)
 
     nbytes = read (fd, buffer, MAXMSG);
 
-    //current_message += buffer;
-    //current_message += " ";
+    command_list(fd, buffer);
 
     if (nbytes < 0)
     {
-        /* Read error. */
+        //Read error.
         perror ("read");
         exit (EXIT_FAILURE);
     }
     else if (nbytes == 0)
     {
-        /* End-of-file. */
+        //End-of-file.
         return -1;
     }
-    else if(buffer == "LEAVE")
-    {
-        return 0;
-    }
-
     else
     {
-        /* Data read. */
+        //Data read.
         fprintf (stderr, "Server: got message: `%s'\n", buffer);
         return 0;
     }
@@ -100,28 +95,28 @@ int read_from_client (int fd)
 
 int make_socket (uint16_t port)
 {
-  int sock;
-  struct sockaddr_in name;
+    int sock;
+    struct sockaddr_in name;
 
-  /* Create the socket. */
-  sock = socket (PF_INET, SOCK_STREAM, 0);
-  if (sock < 0)
+    //Create the socket.
+    sock = socket (PF_INET, SOCK_STREAM, 0);
+    if (sock < 0)
     {
-      perror ("socket");
-      exit (EXIT_FAILURE);
+          perror ("socket");
+          exit (EXIT_FAILURE);
     }
 
-  /* Give the socket a name. */
-  name.sin_family = AF_INET;
-  name.sin_port = htons (port);
-  name.sin_addr.s_addr = htonl (INADDR_ANY);
-  if (bind (sock, (struct sockaddr *) &name, sizeof (name)) < 0)
+    //Give the socket a name.
+    name.sin_family = AF_INET;
+    name.sin_port = htons (port);
+    name.sin_addr.s_addr = htonl (INADDR_ANY);
+    if (bind (sock, (struct sockaddr *) &name, sizeof (name)) < 0)
     {
-      perror ("bind");
-      exit (EXIT_FAILURE);
+        perror ("bind");
+        exit (EXIT_FAILURE);
     }
 
-  return sock;
+    return sock;
 }
 
 int main (void)
@@ -133,7 +128,7 @@ int main (void)
     struct sockaddr_in clientname;
     socklen_t size;
 
-    /* Create the socket and set it up to accept connections. */
+    //Create the socket and set it up to accept connections.
     sock = make_socket (PORT);
     if (listen (sock, 1) < 0)
     {
@@ -141,13 +136,13 @@ int main (void)
         exit (EXIT_FAILURE);
     }
 
-    /* Initialize the set of active sockets. */
+    //Initialize the set of active sockets.
     FD_ZERO (&active_fd_set);
     FD_SET (sock, &active_fd_set);
 
     while (1)
     {
-      /* Block until input arrives on one or more active sockets. */
+      //Block until input arrives on one or more active sockets.
       read_fd_set = active_fd_set;
       if (select (FD_SETSIZE, &read_fd_set, NULL, NULL, NULL) < 0)
       {
@@ -156,14 +151,14 @@ int main (void)
       }
 
 
-      /* Service all the sockets with input pending. */
+      //Service all the sockets with input pending.
       for (i = 0; i < FD_SETSIZE; ++i)
       {
         if (FD_ISSET (i, &read_fd_set))
         {
             if (i == sock)
             {
-                /* Connection request on original socket. */
+                //Connection request on original socket.
                 int connection;
                 size = sizeof (clientname);
                 connection = accept (sock,(struct sockaddr *) &clientname, &size);
@@ -180,16 +175,12 @@ int main (void)
             }
             else
             {
-                fprintf (stderr, "Er í els-unni\n");
-
-                /* Data arriving on an already-connected socket. */
+                //Data arriving on an already-connected socket.
                 if (read_from_client (i) < 0)
                 {
                     close (i);
                     FD_CLR (i, &active_fd_set);
                 }
-
-                //command_list(connection, &active_fd_set);
             }
           }
 
